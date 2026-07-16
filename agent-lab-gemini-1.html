@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGENT LAB — Tool-Calling Trace</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+  :root{
+    --ink: #0B0E14;
+    --panel: #12161F;
+    --panel-raised: #171C27;
+    --line: #232A38;
+    --text: #E7E9EE;
+    --text-dim: #8791A3;
+    --gold: #E8A33D;
+    --gold-dim: #7A5A28;
+    --cyan: #5FB8B3;
+    --green: #6FBF7C;
+    --red: #D9695F;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 15% 0%, rgba(232,163,61,0.06), transparent 45%),
+      var(--ink);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .wrap{ max-width:760px; margin:0 auto; padding:0 16px 40px; }
+
+  /* ---- Header ---- */
+  header{
+    padding:28px 0 20px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:18px;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:.18em;
+    color:var(--gold);
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+  h1{
+    font-size:26px;
+    font-weight:800;
+    margin:0 0 6px;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    color:var(--text-dim);
+    font-size:14px;
+    line-height:1.5;
+    margin:0;
+    max-width:56ch;
+  }
+
+  /* ---- Tool legend ---- */
+  .tools-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-top:16px;
+  }
+  .tool-chip{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    padding:5px 10px;
+    border-radius:5px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    color:var(--text-dim);
+  }
+  .tool-chip b{ color:var(--cyan); font-weight:600; }
+
+  /* ---- API key bar ---- */
+  .keybar{
+    display:flex;
+    gap:8px;
+    margin:18px 0;
+  }
+  .keybar input{
+    flex:1;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:6px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+  }
+  .keybar input:focus{ outline:none; border-color:var(--gold-dim); }
+  .keybar-note{
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:6px;
+    line-height:1.4;
+  }
+
+  /* ---- Composer ---- */
+  .composer{
+    display:flex;
+    gap:8px;
+    margin-bottom:22px;
+  }
+  .composer textarea{
+    flex:1;
+    resize:none;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:12px 14px;
+    border-radius:8px;
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    line-height:1.4;
+    min-height:52px;
+  }
+  .composer textarea:focus{ outline:none; border-color:var(--gold-dim); }
+  .send-btn{
+    background:var(--gold);
+    color:#1a1305;
+    border:none;
+    border-radius:8px;
+    padding:0 20px;
+    font-family:'Inter',sans-serif;
+    font-weight:700;
+    font-size:14px;
+    cursor:pointer;
+    transition:filter .15s ease;
+  }
+  .send-btn:hover{ filter:brightness(1.08); }
+  .send-btn:disabled{ background:var(--panel-raised); color:var(--text-dim); cursor:not-allowed; }
+
+  .examples{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin:-12px 0 22px;
+  }
+  .ex-btn{
+    font-size:11.5px;
+    font-family:'JetBrains Mono',monospace;
+    background:transparent;
+    color:var(--text-dim);
+    border:1px dashed var(--line);
+    border-radius:6px;
+    padding:6px 9px;
+    cursor:pointer;
+  }
+  .ex-btn:hover{ color:var(--cyan); border-color:var(--cyan); }
+
+  /* ---- Trace ledger (signature element) ---- */
+  .ledger{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:var(--panel);
+    overflow:hidden;
+  }
+  .ledger-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:.1em;
+    color:var(--text-dim);
+    text-transform:uppercase;
+  }
+  .ledger-body{ padding:6px 0; }
+  .empty-state{
+    padding:34px 20px;
+    text-align:center;
+    color:var(--text-dim);
+    font-size:13px;
+    line-height:1.6;
+  }
+
+  .step{
+    display:grid;
+    grid-template-columns:64px 1fr;
+    padding:10px 14px;
+    border-bottom:1px solid var(--line);
+    gap:10px;
+    animation:rise .25s ease;
+  }
+  .step:last-child{ border-bottom:none; }
+  @keyframes rise{ from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);} }
+
+  .step-tag{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:.06em;
+    padding:3px 0;
+    text-align:center;
+    border-radius:4px;
+    height:fit-content;
+    align-self:start;
+  }
+  .tag-think{ background:rgba(232,163,61,0.12); color:var(--gold); }
+  .tag-tool{ background:rgba(95,184,179,0.12); color:var(--cyan); }
+  .tag-result{ background:rgba(111,191,124,0.12); color:var(--green); }
+  .tag-answer{ background:rgba(232,163,61,0.2); color:var(--gold); }
+  .tag-user{ background:rgba(135,145,163,0.15); color:var(--text-dim); }
+  .tag-error{ background:rgba(217,105,95,0.15); color:var(--red); }
+
+  .step-content{ font-size:13.5px; line-height:1.55; }
+  .step-content .user-msg{ color:var(--text); font-weight:500; }
+  .step-content .think-msg{ color:var(--text); }
+  .step-content code, .tool-call{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    padding:8px 10px;
+    border-radius:6px;
+    display:block;
+    margin-top:6px;
+    color:var(--cyan);
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .tool-result-box{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    border-left:2px solid var(--green);
+    padding:8px 10px;
+    border-radius:6px;
+    display:block;
+    margin-top:6px;
+    color:var(--green);
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .final-answer{
+    color:var(--text);
+    font-size:14.5px;
+    line-height:1.6;
+  }
+
+  .typing{
+    display:inline-flex;
+    gap:4px;
+    padding:4px 0;
+  }
+  .typing span{
+    width:5px; height:5px; border-radius:50%;
+    background:var(--text-dim);
+    animation:blink 1.2s infinite ease-in-out;
+  }
+  .typing span:nth-child(2){ animation-delay:.2s; }
+  .typing span:nth-child(3){ animation-delay:.4s; }
+  @keyframes blink{ 0%,80%,100%{opacity:.2;} 40%{opacity:1;} }
+
+  footer{
+    text-align:center;
+    color:var(--text-dim);
+    font-size:11px;
+    font-family:'JetBrains Mono',monospace;
+    margin-top:24px;
+    letter-spacing:.05em;
+  }
+
+  @media (max-width:480px){
+    h1{ font-size:22px; }
+    .step{ grid-template-columns:52px 1fr; }
+    .step-tag{ font-size:9px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Agent Lab · 01</div>
+    <h1>Watch an agent think.</h1>
+    <p>This isn't a chatbot — it's a loop. Ask it something, and every reasoning step, tool call, and result appears below in order, exactly as the model produced it.</p>
+    <div class="tools-row">
+      <span class="tool-chip"><b>calculator</b> — position size, pips, %</span>
+      <span class="tool-chip"><b>price_lookup</b> — sample market data</span>
+      <span class="tool-chip"><b>journal</b> — logs a note</span>
+    </div>
+  </header>
+
+  <div class="keybar">
+    <input type="password" id="apiKey" placeholder="Paste your Gemini API key (AIza...)">
+  </div>
+  <div class="keybar-note">Stored only in this browser tab's memory — cleared on refresh, never sent anywhere but generativelanguage.googleapis.com. Get a free key at aistudio.google.com/apikey — no card required.</div>
+
+  <div class="composer" style="margin-top:16px;">
+    <textarea id="userInput" placeholder="e.g. I have $500, risking 1%, stop loss is 20 pips on EURUSD — what's my lot size?"></textarea>
+    <button class="send-btn" id="sendBtn">Run</button>
+  </div>
+
+  <div class="examples">
+    <button class="ex-btn" data-ex="I have $1000 and want to risk 2% on GBPUSD with a 35 pip stop. What lot size should I use? Log it to my journal too.">position size example</button>
+    <button class="ex-btn" data-ex="What's the current sample price for XAUUSD, and what would a 0.5% move look like in dollars on a $2000 account?">gold move example</button>
+    <button class="ex-btn" data-ex="Check the BTCUSD sample price, then log a journal note reminding me to review my stop loss.">journal example</button>
+  </div>
+
+  <div class="ledger">
+    <div class="ledger-head">
+      <span>Reasoning trace</span>
+      <span id="stepCount">0 steps</span>
+    </div>
+    <div class="ledger-body" id="ledgerBody">
+      <div class="empty-state">No run yet. Paste an API key, type a task, hit Run.<br>Watch the agent decide when to think vs. act.</div>
+    </div>
+  </div>
+
+  <footer>BUILT FOR LEARNING — INSPECTS ITS OWN REASONING LOOP</footer>
+</div>
+
+<script>
+const ledgerBody = document.getElementById('ledgerBody');
+const stepCount = document.getElementById('stepCount');
+const sendBtn = document.getElementById('sendBtn');
+const userInput = document.getElementById('userInput');
+const apiKeyInput = document.getElementById('apiKey');
+let stepN = 0;
+
+document.querySelectorAll('.ex-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{ userInput.value = b.dataset.ex; userInput.focus(); });
+});
+
+function clearEmptyState(){
+  const es = ledgerBody.querySelector('.empty-state');
+  if(es) es.remove();
+}
+
+function addStep(tag, tagClass, html){
+  clearEmptyState();
+  stepN++;
+  stepCount.textContent = stepN + (stepN===1?' step':' steps');
+  const div = document.createElement('div');
+  div.className = 'step';
+  div.innerHTML = `<div class="step-tag ${tagClass}">${tag}</div><div class="step-content">${html}</div>`;
+  ledgerBody.appendChild(div);
+  div.scrollIntoView({behavior:'smooth', block:'end'});
+  return div;
+}
+
+function addTyping(){
+  const div = addStep('THINK','tag-think','<div class="typing"><span></span><span></span><span></span></div>');
+  return div;
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---- Local tool implementations ----
+const SAMPLE_PRICES = {
+  EURUSD: 1.0842, GBPUSD: 1.2687, USDJPY: 156.32, XAUUSD: 2384.50, BTCUSD: 61240
+};
+
+function runTool(name, input){
+  if(name === 'calculator'){
+    const { expression } = input;
+    try{
+      // Safe-ish arithmetic eval: only digits, operators, parens, decimal points
+      if(!/^[0-9+\-*/().\s]+$/.test(expression)) throw new Error('Invalid characters in expression');
+      const result = Function('"use strict"; return (' + expression + ')')();
+      return { result };
+    }catch(e){
+      return { error: 'Could not evaluate: ' + e.message };
+    }
+  }
+  if(name === 'price_lookup'){
+    const symbol = (input.symbol || '').toUpperCase();
+    if(SAMPLE_PRICES[symbol] !== undefined){
+      return { symbol, price: SAMPLE_PRICES[symbol], note: 'sample/static data, not live' };
+    }
+    return { error: 'No sample price for ' + symbol + '. Available: ' + Object.keys(SAMPLE_PRICES).join(', ') };
+  }
+  if(name === 'journal'){
+    const note = input.note || '';
+    return { logged: true, note, timestamp: new Date().toLocaleTimeString() };
+  }
+  return { error: 'Unknown tool: ' + name };
+}
+
+const TOOLS = [
+  {
+    name: "calculator",
+    description: "Evaluate an arithmetic expression. Use for position sizing, pip value, percentage risk, or any math the task needs.",
+    parameters: {
+      type: "object",
+      properties: {
+        expression: { type: "string", description: "A plain arithmetic expression, e.g. '(1000*0.01)/20'" }
+      },
+      required: ["expression"]
+    }
+  },
+  {
+    name: "price_lookup",
+    description: "Look up a sample/static price for a symbol. Supported: EURUSD, GBPUSD, USDJPY, XAUUSD, BTCUSD. Not live market data.",
+    parameters: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "e.g. EURUSD" }
+      },
+      required: ["symbol"]
+    }
+  },
+  {
+    name: "journal",
+    description: "Log a short note to the user's trading journal for this session.",
+    parameters: {
+      type: "object",
+      properties: {
+        note: { type: "string", description: "The note to log" }
+      },
+      required: ["note"]
+    }
+  }
+];
+
+const SYSTEM_PROMPT = `You are a small agent inside a learning tool called Agent Lab. The user is learning how AI agents reason and use tools by watching your steps live. You have three tools: calculator, price_lookup (sample data only, not live), and journal.
+
+Think briefly before acting. Use tools when the task needs math, price data, or logging — don't guess numbers yourself. When you have everything you need, give a clear, concise final answer. Keep tone plain and direct.`;
+
+const GEMINI_MODEL = "gemini-2.5-flash";
+
+async function callGemini(apiKey, contents){
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      tools: [{ functionDeclarations: TOOLS }],
+      contents
+    })
+  });
+  if(!resp.ok){
+    const errText = await resp.text();
+    throw new Error(`API error ${resp.status}: ${errText.slice(0,200)}`);
+  }
+  return resp.json();
+}
+
+async function runAgent(){
+  const apiKey = apiKeyInput.value.trim();
+  const task = userInput.value.trim();
+  if(!apiKey){ alert('Paste your Gemini API key first.'); return; }
+  if(!task){ return; }
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Running…';
+
+  addStep('USER','tag-user', `<span class="user-msg">${esc(task)}</span>`);
+
+  let contents = [{ role: "user", parts: [{ text: task }] }];
+  const MAX_TURNS = 6;
+
+  try{
+    for(let turn=0; turn<MAX_TURNS; turn++){
+      const thinkingEl = addTyping();
+      const data = await callGemini(apiKey, contents);
+      thinkingEl.remove();
+      stepN--; // typing step shouldn't count
+
+      const candidate = (data.candidates && data.candidates[0]) || null;
+      const parts = (candidate && candidate.content && candidate.content.parts) || [];
+      const textParts = parts.filter(p=>p.text).map(p=>p.text).join('\n').trim();
+      const funcCalls = parts.filter(p=>p.functionCall);
+
+      if(textParts){
+        if(funcCalls.length){
+          addStep('THINK','tag-think', `<span class="think-msg">${esc(textParts)}</span>`);
+        } else {
+          addStep('ANSWER','tag-answer', `<div class="final-answer">${esc(textParts)}</div>`);
+        }
+      }
+
+      if(funcCalls.length === 0){
+        // No tool calls, agent is done
+        if(!textParts){
+          addStep('ERROR','tag-error', `<span>No response text or tool call returned. Try rephrasing the task.</span>`);
+        }
+        break;
+      }
+
+      // Push model turn (with functionCall parts) into history
+      contents.push({ role: "model", parts });
+
+      // Execute each tool call locally, build functionResponse parts
+      const responseParts = [];
+      for(const fc of funcCalls){
+        const name = fc.functionCall.name;
+        const args = fc.functionCall.args || {};
+        addStep('TOOL','tag-tool', `<span>${esc(name)}</span><code class="tool-call">${esc(JSON.stringify(args, null, 2))}</code>`);
+        const result = runTool(name, args);
+        addStep('RESULT','tag-result', `<span>${esc(name)} → result</span><code class="tool-result-box">${esc(JSON.stringify(result, null, 2))}</code>`);
+        responseParts.push({
+          functionResponse: { name, response: result }
+        });
+      }
+
+      contents.push({ role: "user", parts: responseParts });
+    }
+  }catch(err){
+    addStep('ERROR','tag-error', `<span>${esc(err.message)}</span>`);
+  }finally{
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Run';
+  }
+}
+
+sendBtn.addEventListener('click', runAgent);
+userInput.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ runAgent(); }
+});
+</script>
+
+</body>
+</html>
